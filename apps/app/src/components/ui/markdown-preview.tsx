@@ -656,6 +656,40 @@ function appendMarkdownLinkIcon(
   );
 }
 
+function decodeMarkdownFragmentHref(href: string | undefined): string | null {
+  if (!href || !href.startsWith("#") || href.length < 2) return null;
+  try {
+    return decodeURIComponent(href.slice(1));
+  } catch {
+    return href.slice(1);
+  }
+}
+
+function slugifyMarkdownHeading(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s_-]/gu, "")
+    .replace(/\s/gu, "-");
+}
+
+function findMarkdownFragmentTarget(
+  preview: Element,
+  fragment: string,
+): Element | null {
+  const prefixedId = `user-content-${fragment}`;
+  for (const element of preview.querySelectorAll("[id]")) {
+    if (element.id === fragment || element.id === prefixedId) return element;
+  }
+  const slug = fragment.toLowerCase();
+  for (const heading of preview.querySelectorAll("h1, h2, h3, h4, h5, h6")) {
+    if (slugifyMarkdownHeading(heading.textContent ?? "") === slug) {
+      return heading;
+    }
+  }
+  return null;
+}
+
 function MarkdownAnchor({
   children,
   href,
@@ -681,10 +715,11 @@ function MarkdownAnchor({
         )?.link ?? null)
       : null;
   const anchorHref = buildLocalFileAnchorHref(localFileLink, rewrittenHref);
+  const fragment = decodeMarkdownFragmentHref(rewrittenHref);
   const getContextMenuItems = useContext(MarkdownLocalFileContextMenuContext);
   const openTargets = useContext(MarkdownLocalFileOpenTargetsContext);
   if (!anchorHref) {
-    return <span>{children}</span>;
+    return <span id={anchorProps.id}>{children}</span>;
   }
   const contextMenuItems =
     localFileLink !== null && getContextMenuItems !== null
@@ -695,6 +730,15 @@ function MarkdownAnchor({
       ? undefined
       : openTargets.find((target) => target.id === localFileLink.openTargetId);
   const handleAnchorClick = (event: MarkdownAnchorEvent) => {
+    if (fragment !== null) {
+      event.preventDefault();
+      const preview = event.currentTarget.closest("[data-markdown-preview]");
+      const target =
+        preview === null ? null : findMarkdownFragmentTarget(preview, fragment);
+      target?.scrollIntoView({ block: "start" });
+      return;
+    }
+
     if (localFileLink && onOpenLocalFileLink) {
       if (onOpenLocalFileLink(localFileLink)) {
         event.preventDefault();
@@ -727,8 +771,8 @@ function MarkdownAnchor({
       className={cn(
         "break-words [overflow-wrap:anywhere] underline underline-offset-2",
       )}
-      target="_blank"
-      rel="noopener noreferrer"
+      target={fragment === null ? "_blank" : undefined}
+      rel={fragment === null ? "noopener noreferrer" : undefined}
       onClick={handleAnchorClick}
     >
       {localFileLink

@@ -786,6 +786,53 @@ describe("MarkdownPreview", () => {
     ]);
   });
 
+  it("scrolls fragment links to their target inside the preview", () => {
+    const onOpenLink = vi.fn(() => true);
+    const scrolled: string[] = [];
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.id || (this.textContent ?? ""));
+    };
+    try {
+      render(
+        <MarkdownPreview
+          allowHtml
+          content={[
+            "[html anchor](#block-1) [heading](#plain-heading) [cyrillic](#%D0%B7%D0%B0%D0%B3%D0%BE%D0%BB%D0%BE%D0%B2%D0%BE%D0%BA-%D0%B4%D0%B2%D0%B0) [div](#div-anchor) [missing](#missing)",
+            "",
+            '<a id="block-1"></a>',
+            "",
+            "## Plain heading",
+            "",
+            "## Заголовок два",
+            "",
+            '<div id="div-anchor">Div</div>',
+          ].join("\n")}
+          linkRouting={{ onOpenLink }}
+        />,
+      );
+
+      for (const name of ["html anchor", "heading", "cyrillic", "div"]) {
+        const link = screen.getByRole("link", { name });
+        expect(link.getAttribute("target")).toBeNull();
+        expect(fireEvent.click(link)).toBe(false);
+      }
+      expect(
+        fireEvent.click(screen.getByRole("link", { name: "missing" })),
+      ).toBe(false);
+    } finally {
+      Element.prototype.scrollIntoView = originalScrollIntoView;
+    }
+
+    expect(scrolled).toEqual([
+      "user-content-block-1",
+      "Plain heading",
+      "Заголовок два",
+      "user-content-div-anchor",
+    ]);
+    expect(onOpenLink).not.toHaveBeenCalled();
+  });
+
   it("renders links with blocked protocols as inert text", () => {
     const onOpenLink = vi.fn(() => true);
     const onOpenLocalFileLink = vi.fn(() => true);
